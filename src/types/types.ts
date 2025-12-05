@@ -92,6 +92,7 @@ export interface ExtendedTask extends GanttTask {
   duration?: number; // In days
   effort?: number; // In hours
   cost?: number;
+  fixedCost?: number;
   budgetedCost?: number;
   resources?: TaskResource[];
   notes?: TaskNote[];
