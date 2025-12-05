@@ -17,6 +17,7 @@ import TaskContextMenu from "./TaskContextMenu";
 interface GanttViewProps {
     viewMode: ViewMode;
     showCriticalPath: boolean;
+    showBaseline?: boolean;
     searchQuery: string;
     onEditTask: (task: ExtendedTask) => void;
 }
@@ -90,9 +91,9 @@ const CustomTooltip: React.FC<{
     );
 };
 
-const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searchQuery, onEditTask }) => {
+const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, showBaseline = false, searchQuery, onEditTask }) => {
     const { getTasks, updateTask, deleteTask, recalculateDates, getResources } = useMultiProject();
-    const [tasks, setTasks] = useState<Task[]>([]);
+    const [tasks, setTasks] = useState<(Task & { constraintType?: string; constraintDate?: Date })[]>([]);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [filters, setFilters] = useState<{
@@ -156,13 +157,15 @@ const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searc
         }
 
         // Convert to Gantt Task format
-        const ganttTasks: Task[] = groupedTasks.map((task) => {
+        const ganttTasks: (Task & { constraintType?: string; constraintDate?: Date })[] = [];
+
+        groupedTasks.forEach((task) => {
             const hasConstraint = task.constraintType && task.constraintType !== 'ASAP';
             const wbs = wbsMap.get(task.id) || '';
             const wbsPrefix = wbs ? `${wbs}. ` : '';
-            const isSelected = task.id === selectedTaskId;
 
-            return {
+            // Standard Task
+            ganttTasks.push({
                 start: task.start,
                 end: task.end,
                 name: hasConstraint ? `${wbsPrefix}${task.name} 🔒` : `${wbsPrefix}${task.name}`,
@@ -173,7 +176,7 @@ const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searc
                 dependencies: task.dependencies,
                 hideChildren: task.hideChildren,
                 displayOrder: task.displayOrder,
-                // Pass custom data for tooltip
+                // Pass custom data for tooltip (will be accessed via type assertion)
                 constraintType: task.constraintType,
                 constraintDate: task.constraintDate,
                 // Apply critical path styling
@@ -200,11 +203,35 @@ const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searc
                                     progressSelectedColor: "#1e293b", // slate-800
                                 }
                                 : undefined,
-            };
+            });
+
+            // Baseline Task (Ghost)
+            if (showBaseline && task.baselineStart && task.baselineEnd) {
+                ganttTasks.push({
+                    start: task.baselineStart,
+                    end: task.baselineEnd,
+                    name: "Baseline",
+                    id: `baseline-${task.id}`,
+                    type: "task",
+                    progress: 0,
+                    // Use task.project to keep baseline as sibling
+                    project: task.project,
+                    dependencies: [],
+                    hideChildren: false,
+                    displayOrder: task.displayOrder, // Same order?
+                    isDisabled: true,
+                    styles: {
+                        backgroundColor: "#cbd5e1", // slate-300
+                        backgroundSelectedColor: "#94a3b8", // slate-400
+                        progressColor: "transparent",
+                        progressSelectedColor: "transparent",
+                    }
+                });
+            }
         });
 
         setTasks(ganttTasks);
-    }, [getTasks, showCriticalPath, searchQuery, filters, grouping, selectedTaskId]);
+    }, [getTasks, showCriticalPath, showBaseline, searchQuery, filters, grouping, selectedTaskId]);
 
     const handleTaskChange = (task: Task) => {
         const duration = differenceInDays(task.end, task.start) + 1;

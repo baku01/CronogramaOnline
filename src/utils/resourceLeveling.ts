@@ -180,7 +180,6 @@ export function performResourceLeveling(
       
       // Calculate new end date
       const duration = Math.max(1, Math.ceil((task.end.getTime() - task.start.getTime()) / (1000 * 60 * 60 * 24)));
-      const newEnd = new Date(newStart);
       // Add duration (simplistic, doesn't skip weekends properly here for end date calc, but sufficient for now)
       // Better:
       let daysAdded = 0;
