@@ -15,6 +15,8 @@ import SettingsView from "./components/SettingsView";
 import PertDiagram from "./components/PertDiagram";
 import CalendarView from "./components/CalendarView";
 import ProjectSwitcher from "./components/ProjectSwitcher";
+import TaskBoard from "./components/TaskBoard";
+import TaskSheetView from "./components/TaskSheetView";
 import type { ExtendedTask } from "./types/types";
 import { DependencyType } from "./types/types";
 
@@ -63,6 +65,7 @@ const AppContent: React.FC = () => {
     const [activeTab, setActiveTab] = useState("gantt");
     const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
     const [showCriticalPath, setShowCriticalPath] = useState(false);
+    const [showBaseline, setShowBaseline] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<ExtendedTask | undefined>(undefined);
@@ -218,6 +221,14 @@ const AppContent: React.FC = () => {
                         </div>
                     </div>
                 );
+            case "board":
+                return (
+                    <div className="h-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in flex flex-col">
+                        <div className="flex-1 overflow-hidden relative">
+                            <TaskBoard />
+                        </div>
+                    </div>
+                );
             case "dashboard":
                 return <Dashboard />;
             case "resources":
@@ -279,6 +290,8 @@ const AppContent: React.FC = () => {
                         onViewModeChange={setViewMode}
                         onShowCriticalPath={setShowCriticalPath}
                         showCriticalPath={showCriticalPath}
+                        onShowBaseline={setShowBaseline}
+                        showBaseline={showBaseline}
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                     />

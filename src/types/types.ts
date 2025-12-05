@@ -87,10 +87,12 @@ export interface ExtendedTask extends GanttTask {
   // Extended fields
   status: TaskStatus;
   priority: TaskPriority;
+  mode?: 'auto' | 'manual';
   description?: string;
   duration?: number; // In days
   effort?: number; // In hours
   cost?: number;
+  fixedCost?: number;
   budgetedCost?: number;
   resources?: TaskResource[];
   notes?: TaskNote[];
