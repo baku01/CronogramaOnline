@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@layer base {
+
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+    background-image: radial-gradient(circle at top left, #f1f5f9, transparent 40%),
+      radial-gradient(circle at bottom right, #e2e8f0, transparent 40%);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Outfit", system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2.5 rounded-xl font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98];
+  }
+
+  .btn-primary {
+    @apply bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 border border-transparent;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900 focus:ring-slate-200 shadow-sm hover:shadow hover:border-slate-300;
+  }
+
+  .btn-danger {
+    @apply bg-white text-red-600 border border-red-100 hover:bg-red-50 focus:ring-red-500 hover:border-red-200 shadow-sm;
+  }
+
+  .btn-ghost {
+    @apply text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+  }
+
+  .card {
+    @apply bg-white/80 backdrop-blur-sm rounded-2xl border border-white/50 shadow-sm hover:shadow-md transition-all duration-300;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm placeholder:text-slate-400;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-50;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Gantt Chart Overrides */
+.gantt-container text {
+  @apply !fill-slate-500 !text-xs;
+}
+
+.gantt-container .grid-row {
+  @apply !fill-white;
+}
+
+.gantt-container .grid-row:nth-child(even) {
+  @apply !fill-slate-50/30;
+}
+
+.gantt-container .bar-label {
+  @apply !fill-slate-700 !font-medium !text-xs;
+}
+
+.gantt-container .grid-tick {
+  @apply !stroke-slate-100;
+}
+
+/* Selection highlight */
+::selection {
+  @apply bg-indigo-100 text-indigo-900;
+}
