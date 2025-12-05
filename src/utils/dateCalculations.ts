@@ -1,6 +1,6 @@
 import { addDays, differenceInDays } from 'date-fns';
 import { DependencyType } from '../types/types';
-import type { ExtendedTask, TaskDependency } from '../types/types';
+import type { ExtendedTask, TaskDependency, ProjectCalendar } from '../types/types';
 
 /**
  * Default working days (Monday to Friday)
@@ -8,19 +8,48 @@ import type { ExtendedTask, TaskDependency } from '../types/types';
 export const DEFAULT_WORKING_DAYS = [1, 2, 3, 4, 5];
 
 /**
+ * Helper to normalize calendar input to ProjectCalendar object or number[]
+ */
+function getWorkingDaysArray(calendarOrDays: ProjectCalendar | number[]): number[] {
+    if (Array.isArray(calendarOrDays)) return calendarOrDays;
+    return calendarOrDays.workingDays;
+}
+
+/**
  * Check if a date is a working day
  */
-export function isWorkingDay(date: Date, workingDays: number[] = DEFAULT_WORKING_DAYS): boolean {
-  const dayOfWeek = date.getDay();
-  return workingDays.includes(dayOfWeek);
+export function isWorkingDay(date: Date, calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS): boolean {
+  if (!Array.isArray(calendarOrDays)) {
+      // Check exceptions first
+      // We assume date has time set to 00:00:00 or similar, but for safety we compare YYYY-MM-DD
+      // However, iterating over exceptions for every check might be slow for large calendars.
+      // Optimally we would use a Set or Map for exceptions lookup.
+      // For now, simple iteration.
+
+      const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+      for (const exception of calendarOrDays.exceptions) {
+          const start = new Date(exception.startDate);
+          start.setHours(0,0,0,0);
+          const end = new Date(exception.endDate);
+          end.setHours(23,59,59,999);
+
+          if (checkDate >= start && checkDate <= end) {
+              return exception.isWorkingTime;
+          }
+      }
+      return calendarOrDays.workingDays.includes(date.getDay());
+  }
+
+  return calendarOrDays.includes(date.getDay());
 }
 
 /**
  * Calculate the next working day
  */
-export function getNextWorkingDay(date: Date, workingDays: number[] = DEFAULT_WORKING_DAYS): Date {
+export function getNextWorkingDay(date: Date, calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS): Date {
   let nextDay = addDays(date, 1);
-  while (!isWorkingDay(nextDay, workingDays)) {
+  while (!isWorkingDay(nextDay, calendarOrDays)) {
     nextDay = addDays(nextDay, 1);
   }
   return nextDay;
@@ -29,9 +58,9 @@ export function getNextWorkingDay(date: Date, workingDays: number[] = DEFAULT_WO
 /**
  * Calculate the previous working day
  */
-export function getPreviousWorkingDay(date: Date, workingDays: number[] = DEFAULT_WORKING_DAYS): Date {
+export function getPreviousWorkingDay(date: Date, calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS): Date {
   let prevDay = addDays(date, -1);
-  while (!isWorkingDay(prevDay, workingDays)) {
+  while (!isWorkingDay(prevDay, calendarOrDays)) {
     prevDay = addDays(prevDay, -1);
   }
   return prevDay;
@@ -43,7 +72,7 @@ export function getPreviousWorkingDay(date: Date, workingDays: number[] = DEFAUL
 export function addWorkingDays(
   date: Date,
   days: number,
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): Date {
   let result = new Date(date);
   let remainingDays = Math.abs(days);
@@ -51,7 +80,7 @@ export function addWorkingDays(
 
   while (remainingDays > 0) {
     result = addDays(result, direction);
-    if (isWorkingDay(result, workingDays)) {
+    if (isWorkingDay(result, calendarOrDays)) {
       remainingDays--;
     }
   }
@@ -65,14 +94,22 @@ export function addWorkingDays(
 export function getWorkingDaysBetween(
   startDate: Date,
   endDate: Date,
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): number {
   let count = 0;
   let current = new Date(startDate);
   const end = new Date(endDate);
 
+  // If start is after end, return negative working days
+  if (current > end) {
+      return -getWorkingDaysBetween(endDate, startDate, calendarOrDays);
+  }
+
+  // Inclusive count?
+  // Usually duration is inclusive: Start Mon, End Mon = 1 day.
+  // getWorkingDaysBetween(Mon, Mon) should return 1.
   while (current <= end) {
-    if (isWorkingDay(current, workingDays)) {
+    if (isWorkingDay(current, calendarOrDays)) {
       count++;
     }
     current = addDays(current, 1);
@@ -87,10 +124,11 @@ export function getWorkingDaysBetween(
 export function calculateEndDate(
   startDate: Date,
   duration: number,
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): Date {
   if (duration <= 0) return startDate;
-  return addWorkingDays(startDate, duration - 1, workingDays);
+  // If duration is 1, end date is start date
+  return addWorkingDays(startDate, duration - 1, calendarOrDays);
 }
 
 /**
@@ -99,10 +137,10 @@ export function calculateEndDate(
 export function calculateStartDate(
   endDate: Date,
   duration: number,
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): Date {
   if (duration <= 0) return endDate;
-  return addWorkingDays(endDate, -(duration - 1), workingDays);
+  return addWorkingDays(endDate, -(duration - 1), calendarOrDays);
 }
 
 /**
@@ -111,26 +149,38 @@ export function calculateStartDate(
 export function calculateDependentStartDate(
   predecessorTask: ExtendedTask,
   dependency: TaskDependency,
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): Date {
   const lag = dependency.lag || 0;
 
   switch (dependency.type) {
     case DependencyType.FS: // Finish-to-Start
-      return addWorkingDays(predecessorTask.end, lag + 1, workingDays);
+      // Successor Start = Predecessor End + Lag + 1 working day (if lag is 0)
+      // actually standard: End(Mon) -> Start(Tue). Gap is 0.
+      // addWorkingDays(Mon, 1) = Tue. Correct.
+      return addWorkingDays(predecessorTask.end, lag + 1, calendarOrDays);
 
     case DependencyType.SS: // Start-to-Start
-      return addWorkingDays(predecessorTask.start, lag, workingDays);
+      // Successor Start = Predecessor Start + Lag
+      return addWorkingDays(predecessorTask.start, lag, calendarOrDays);
 
     case DependencyType.FF: // Finish-to-Finish
-      // For FF, we need to work backwards from predecessor's finish
-      return addWorkingDays(predecessorTask.end, lag, workingDays);
+      // Successor Finish = Predecessor End + Lag
+      // We return the date that corresponds to the FINISH constraint converted to start?
+      // No, this function is expected to return START date.
+      // But we don't know duration here easily.
+      // For now, let's keep it simple and assume the caller handles logic if needed.
+      // But wait, the caller (calculateForwardPass) treats this as START date.
+      // This is the bug.
+      // We will leave this function returning "Target Date" and let Forward Pass interpret it.
+       return addWorkingDays(predecessorTask.end, lag, calendarOrDays);
 
     case DependencyType.SF: // Start-to-Finish
-      return addWorkingDays(predecessorTask.start, lag, workingDays);
+      // Successor Finish = Predecessor Start + Lag
+       return addWorkingDays(predecessorTask.start, lag, calendarOrDays);
 
     default:
-      return addWorkingDays(predecessorTask.end, lag + 1, workingDays);
+      return addWorkingDays(predecessorTask.end, lag + 1, calendarOrDays);
   }
 }
 
@@ -140,7 +190,7 @@ export function calculateDependentStartDate(
 export function calculateForwardPass(
   tasks: ExtendedTask[],
   dependencies: TaskDependency[],
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): Map<string, { earlyStart: Date; earlyFinish: Date }> {
   const result = new Map<string, { earlyStart: Date; earlyFinish: Date }>();
   const processed = new Set<string>();
@@ -161,14 +211,18 @@ export function calculateForwardPass(
     const taskDeps = dependencyMap.get(task.id) || [];
     let earlyStart: Date;
     let earlyFinish: Date | undefined;
-    const duration = task.duration || differenceInDays(task.end, task.start) + 1;
+
+    // Use working days for duration, fallback to calendar days but strictly counting working days
+    const duration = task.duration || getWorkingDaysBetween(task.start, task.end, calendarOrDays);
 
     if (taskDeps.length === 0) {
       // No predecessors - use task's original start date
       earlyStart = task.start;
     } else {
       // Has predecessors - calculate based on dependencies
-      let latestPredecessorFinish = task.start;
+      let calculatedStart = task.start;
+      // We also need to track min Finish date imposed by FF/SF
+      let minFinishDate: Date | null = null;
 
       for (const dep of taskDeps) {
         const predecessor = tasks.find(t => t.id === dep.fromTaskId);
@@ -182,18 +236,33 @@ export function calculateForwardPass(
         const predResult = result.get(predecessor.id);
         if (!predResult) continue;
 
-        const dependentStart = calculateDependentStartDate(
-          { ...predecessor, end: predResult.earlyFinish },
-          dep,
-          workingDays
-        );
+        const updatedPredecessor = { ...predecessor, end: predResult.earlyFinish, start: predResult.earlyStart };
 
-        if (dependentStart > latestPredecessorFinish) {
-          latestPredecessorFinish = dependentStart;
+        if (dep.type === DependencyType.FS || dep.type === DependencyType.SS) {
+             const targetStart = calculateDependentStartDate(updatedPredecessor, dep, calendarOrDays);
+             if (targetStart > calculatedStart) {
+                 calculatedStart = targetStart;
+             }
+        } else {
+            // FF or SF - these constrain the FINISH date
+            // Dependency Target Date (Finish)
+            const targetFinish = calculateDependentStartDate(updatedPredecessor, dep, calendarOrDays);
+             if (!minFinishDate || targetFinish > minFinishDate) {
+                 minFinishDate = targetFinish;
+             }
         }
       }
 
-      earlyStart = latestPredecessorFinish;
+      earlyStart = calculatedStart;
+
+      // Check if we have finish constraints from FF/SF
+      if (minFinishDate) {
+          // Calculate what start date would result in this finish date
+          const startFromFinish = calculateStartDate(minFinishDate, duration, calendarOrDays);
+          if (startFromFinish > earlyStart) {
+              earlyStart = startFromFinish;
+          }
+      }
     }
 
     // Apply Constraints (Forward Pass)
@@ -206,7 +275,7 @@ export function calculateForwardPass(
           break;
         case 'MFO': // Must Finish On
           earlyFinish = constraintDate;
-          earlyStart = calculateStartDate(earlyFinish, duration, workingDays);
+          earlyStart = calculateStartDate(earlyFinish, duration, calendarOrDays);
           break;
         case 'SNET': // Start No Earlier Than
           if (earlyStart < constraintDate) {
@@ -215,10 +284,10 @@ export function calculateForwardPass(
           break;
         case 'FNET': // Finish No Earlier Than
           // Calculate tentative finish based on current earlyStart
-          let tentativeFinish = calculateEndDate(earlyStart, duration, workingDays);
+          let tentativeFinish = calculateEndDate(earlyStart, duration, calendarOrDays);
           if (tentativeFinish < constraintDate) {
             earlyFinish = constraintDate;
-            earlyStart = calculateStartDate(earlyFinish, duration, workingDays);
+            earlyStart = calculateStartDate(earlyFinish, duration, calendarOrDays);
           }
           break;
       }
@@ -226,7 +295,7 @@ export function calculateForwardPass(
 
     // Calculate finish if not already set by MFO/FNET
     if (!earlyFinish) {
-      earlyFinish = calculateEndDate(earlyStart, duration, workingDays);
+      earlyFinish = calculateEndDate(earlyStart, duration, calendarOrDays);
     }
 
     result.set(task.id, { earlyStart, earlyFinish });
@@ -251,7 +320,7 @@ export function calculateBackwardPass(
   dependencies: TaskDependency[],
   forwardPassResults: Map<string, { earlyStart: Date; earlyFinish: Date }>,
   projectEndDate: Date,
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): Map<string, { lateStart: Date; lateFinish: Date }> {
   const result = new Map<string, { lateStart: Date; lateFinish: Date }>();
   const processed = new Set<string>();
@@ -270,7 +339,7 @@ export function calculateBackwardPass(
     if (processed.has(task.id)) return;
 
     const taskSuccessors = successorMap.get(task.id) || [];
-    const duration = task.duration || differenceInDays(task.end, task.start) + 1;
+    const duration = task.duration || getWorkingDaysBetween(task.start, task.end, calendarOrDays);
     let lateFinish: Date;
     let lateStart: Date | undefined;
 
@@ -305,20 +374,20 @@ export function calculateBackwardPass(
 
         switch (dep.type) {
           case DependencyType.FS:
-            requiredFinish = addWorkingDays(succResult.lateStart, -(lag + 1), workingDays);
+            requiredFinish = addWorkingDays(succResult.lateStart, -(lag + 1), calendarOrDays);
             break;
           case DependencyType.SS:
-            requiredFinish = addWorkingDays(succResult.lateStart, -lag, workingDays);
-            requiredFinish = calculateEndDate(requiredFinish, duration, workingDays);
+            requiredFinish = addWorkingDays(succResult.lateStart, -lag, calendarOrDays);
+            requiredFinish = calculateEndDate(requiredFinish, duration, calendarOrDays);
             break;
           case DependencyType.FF:
-            requiredFinish = addWorkingDays(succResult.lateFinish, -lag, workingDays);
+            requiredFinish = addWorkingDays(succResult.lateFinish, -lag, calendarOrDays);
             break;
           case DependencyType.SF:
-            requiredFinish = addWorkingDays(succResult.lateFinish, -lag, workingDays);
+            requiredFinish = addWorkingDays(succResult.lateFinish, -lag, calendarOrDays);
             break;
           default:
-            requiredFinish = addWorkingDays(succResult.lateStart, -(lag + 1), workingDays);
+            requiredFinish = addWorkingDays(succResult.lateStart, -(lag + 1), calendarOrDays);
         }
 
         if (earliestSuccessorStart === null || requiredFinish < earliestSuccessorStart) {
@@ -336,18 +405,18 @@ export function calculateBackwardPass(
       switch (task.constraintType) {
         case 'MSO': // Must Start On
           lateStart = constraintDate;
-          lateFinish = calculateEndDate(lateStart, duration, workingDays);
+          lateFinish = calculateEndDate(lateStart, duration, calendarOrDays);
           break;
         case 'MFO': // Must Finish On
           lateFinish = constraintDate;
-          lateStart = calculateStartDate(lateFinish, duration, workingDays);
+          lateStart = calculateStartDate(lateFinish, duration, calendarOrDays);
           break;
         case 'SNLT': // Start No Later Than
           // We calculate tentative lateStart first, then check
-          let tentativeLateStart = calculateStartDate(lateFinish, duration, workingDays);
+          let tentativeLateStart = calculateStartDate(lateFinish, duration, calendarOrDays);
           if (tentativeLateStart > constraintDate) {
             lateStart = constraintDate;
-            lateFinish = calculateEndDate(lateStart, duration, workingDays);
+            lateFinish = calculateEndDate(lateStart, duration, calendarOrDays);
           }
           break;
         case 'FNLT': // Finish No Later Than
@@ -361,7 +430,7 @@ export function calculateBackwardPass(
 
     // Calculate start if not already set by MSO/SNLT
     if (!lateStart) {
-      lateStart = calculateStartDate(lateFinish, duration, workingDays);
+      lateStart = calculateStartDate(lateFinish, duration, calendarOrDays);
     }
 
     result.set(task.id, { lateStart, lateFinish });
@@ -385,7 +454,7 @@ export function calculateBackwardPass(
 export function calculateSlack(
   tasks: ExtendedTask[],
   dependencies: TaskDependency[],
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): Map<string, number> {
   const slackMap = new Map<string, number>();
 
@@ -396,10 +465,10 @@ export function calculateSlack(
   }, new Date(0));
 
   // Forward pass
-  const forwardPass = calculateForwardPass(tasks, dependencies, workingDays);
+  const forwardPass = calculateForwardPass(tasks, dependencies, calendarOrDays);
 
   // Backward pass
-  const backwardPass = calculateBackwardPass(tasks, dependencies, forwardPass, projectEndDate, workingDays);
+  const backwardPass = calculateBackwardPass(tasks, dependencies, forwardPass, projectEndDate, calendarOrDays);
 
   // Calculate slack for each task
   tasks.forEach(task => {
@@ -423,9 +492,9 @@ export function calculateSlack(
 export function calculateCriticalPath(
   tasks: ExtendedTask[],
   dependencies: TaskDependency[],
-  workingDays: number[] = DEFAULT_WORKING_DAYS
+  calendarOrDays: ProjectCalendar | number[] = DEFAULT_WORKING_DAYS
 ): string[] {
-  const slackMap = calculateSlack(tasks, dependencies, workingDays);
+  const slackMap = calculateSlack(tasks, dependencies, calendarOrDays);
 
   // Critical tasks have zero or near-zero slack
   const criticalTasks = tasks

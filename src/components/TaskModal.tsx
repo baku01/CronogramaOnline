@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Calendar, AlignLeft, CheckSquare, Clock, User, Percent, Type, Link, Plus, Trash2, Lock, ListChecks } from "lucide-react";
+import { X, Calendar, AlignLeft, CheckSquare, Clock, User, Percent, Type, Link, Plus, Trash2, Lock, ListChecks, ArrowUp } from "lucide-react";
 import { TaskStatus, TaskPriority, DependencyType } from "../types/types";
+import type { ProjectCalendar } from "../types/types";
 import type { ExtendedTask, Resource, TaskDependency } from "../types/types";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { useMultiProject } from "../store/multiProjectStore";
+import { calculateEndDate, calculateStartDate, getWorkingDaysBetween } from "../utils/dateCalculations";
 
 // Constraint type mapping
 const CONSTRAINT_TYPES = [
@@ -27,10 +29,12 @@ interface TaskModalProps {
     resources: Resource[];
     allTasks?: ExtendedTask[];
     dependencies?: TaskDependency[];
+    calendars?: ProjectCalendar[];
 }
 
-const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, resources, allTasks = [], dependencies = [] }) => {
-    const { getCustomFields } = useMultiProject();
+const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, resources, allTasks = [], dependencies = [], calendars = [] }) => {
+    const { getCustomFields, getCalendars } = useMultiProject();
+    const availableCalendars = calendars.length > 0 ? calendars : getCalendars();
     const [formData, setFormData] = useState<Partial<ExtendedTask>>({
         name: "",
         start: new Date(),
@@ -46,7 +50,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
         constraintDate: undefined,
         isRecurring: false,
         recurrenceRule: undefined,
+        calendarId: undefined,
     });
+
+    const [schedulingMode, setSchedulingMode] = useState<'auto' | 'manual'>('auto');
 
     const [taskDependencies, setTaskDependencies] = useState<TaskDependency[]>([]);
     const [newDependency, setNewDependency] = useState<{
@@ -62,25 +69,30 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
     useEffect(() => {
         if (isOpen) {
             if (task) {
+                const duration = task.duration || getWorkingDaysBetween(task.start, task.end);
                 setFormData({
                     ...task,
                     start: new Date(task.start),
                     end: new Date(task.end),
+                    duration: duration,
                     constraintDate: task.constraintDate ? new Date(task.constraintDate) : undefined,
                 });
+
+                // Default to Auto Schedule
+                setSchedulingMode('auto');
 
                 // Load task dependencies
                 const taskDeps = dependencies.filter(dep => dep.toTaskId === task.id);
                 setTaskDependencies(taskDeps);
             } else {
                 const now = new Date();
-                const tomorrow = new Date(now);
-                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrow = calculateEndDate(now, 1); // 1 day duration default
 
                 setFormData({
                     name: "",
                     start: now,
                     end: tomorrow,
+                    duration: 1,
                     progress: 0,
                     status: TaskStatus.NOT_STARTED,
                     priority: TaskPriority.MEDIUM,
@@ -91,6 +103,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
                     constraintType: 'ASAP',
                     constraintDate: undefined,
                 });
+                setSchedulingMode('auto');
                 setTaskDependencies([]);
             }
 
@@ -104,7 +117,32 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
     }, [isOpen, task, dependencies]);
 
     const handleChange = (field: keyof ExtendedTask, value: any) => {
-        setFormData((prev) => ({ ...prev, [field]: value }));
+        setFormData((prev) => {
+            const newData = { ...prev, [field]: value };
+
+            // Auto-calculate dates if duration changed
+            if (field === 'duration' && typeof value === 'number') {
+                if (prev.start) {
+                    newData.end = calculateEndDate(prev.start, value);
+                }
+            }
+
+            // Auto-calculate duration if end date changed
+            if (field === 'end' && value instanceof Date && prev.start) {
+                newData.duration = getWorkingDaysBetween(prev.start, value);
+            }
+
+             // Auto-calculate duration if start date changed
+            if (field === 'start' && value instanceof Date && prev.end) {
+                 if (prev.duration) {
+                     newData.end = calculateEndDate(value, prev.duration);
+                 } else {
+                     newData.duration = getWorkingDaysBetween(value, prev.end);
+                 }
+            }
+
+            return newData;
+        });
     };
 
     const handleResourceChange = (resourceId: string, checked: boolean) => {
@@ -218,23 +256,49 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
                         </div>
                     </div>
 
-                    {/* Type & Effort Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Mode & Type & Parent */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                         <div className="space-y-1.5">
+                            <label className="block text-sm font-semibold text-slate-700">Agendamento</label>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                <button
+                                    type="button"
+                                    onClick={() => setSchedulingMode('auto')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                        schedulingMode === 'auto'
+                                            ? 'bg-white text-indigo-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                >
+                                    <Clock size={14} />
+                                    Auto
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSchedulingMode('manual')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                        schedulingMode === 'manual'
+                                            ? 'bg-white text-amber-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                >
+                                    <User size={14} />
+                                    Manual
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="space-y-1.5">
-                            <label className="block text-sm font-semibold text-slate-700">Tipo de Tarefa</label>
+                            <label className="block text-sm font-semibold text-slate-700">Tipo</label>
                             <div className="relative group">
-                                <Type
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
-                                    size={18}
-                                />
                                 <select
                                     value={formData.type}
                                     onChange={(e) => handleChange("type", e.target.value)}
-                                    className="flex h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-10 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 appearance-none text-slate-600 cursor-pointer transition-all"
+                                    className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 appearance-none text-slate-600 cursor-pointer transition-all"
                                 >
                                     <option value="task">Tarefa Padrão</option>
-                                    <option value="milestone">Marco (Milestone)</option>
-                                    <option value="project">Resumo (Projeto)</option>
+                                    <option value="milestone">Marco</option>
+                                    <option value="project">Resumo</option>
                                 </select>
                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                                     <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,29 +307,68 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
                                 </div>
                             </div>
                         </div>
+
                         <div className="space-y-1.5">
-                            <label className="block text-sm font-semibold text-slate-700">Trabalho Estimado (h)</label>
+                             <label className="block text-sm font-semibold text-slate-700">Tarefa Pai</label>
                             <div className="relative group">
-                                <Clock
+                                <ArrowUp
                                     className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
                                     size={18}
                                 />
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    value={formData.effort || 0}
-                                    onChange={(e) => handleChange("effort", parseFloat(e.target.value))}
-                                    className="pl-10 focus:ring-indigo-500 focus:border-indigo-500"
-                                    placeholder="0"
-                                />
+                                <select
+                                    value={formData.project || ''}
+                                    onChange={(e) => handleChange("project", e.target.value || undefined)}
+                                    className="flex h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-10 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 appearance-none text-slate-600 cursor-pointer transition-all"
+                                >
+                                    <option value="">(Nenhuma)</option>
+                                    {allTasks
+                                        .filter(t => t.id !== task?.id && t.type === 'project')
+                                        .map(t => (
+                                            <option key={t.id} value={t.id}>
+                                                {t.name}
+                                            </option>
+                                        ))}
+                                </select>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Dates Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Calendar Override */}
+                    {availableCalendars.length > 1 && (
+                        <div className="mb-5">
+                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Calendário da Tarefa</label>
+                            <div className="relative group">
+                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                                <select
+                                    value={formData.calendarId || ''}
+                                    onChange={(e) => handleChange("calendarId", e.target.value || undefined)}
+                                    className="flex h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-10 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 appearance-none text-slate-600 cursor-pointer transition-all"
+                                >
+                                    <option value="">Padrão do Projeto</option>
+                                    {availableCalendars.map(cal => (
+                                        <option key={cal.id} value={cal.id}>
+                                            {cal.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Dates & Duration Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div className="space-y-1.5">
-                            <label className="block text-sm font-semibold text-slate-700">Data de Início</label>
+                            <label className="block text-sm font-semibold text-slate-700">Início</label>
                             <div className="relative group">
                                 <Calendar
                                     className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
@@ -280,7 +383,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
                             </div>
                         </div>
                         <div className="space-y-1.5">
-                            <label className="block text-sm font-semibold text-slate-700">Data de Término</label>
+                            <label className="block text-sm font-semibold text-slate-700">Término</label>
                             <div className="relative group">
                                 <Calendar
                                     className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
@@ -291,6 +394,23 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, re
                                     value={formatDateForInput(formData.end)}
                                     onChange={(e) => handleChange("end", new Date(e.target.value))}
                                     className="pl-10 text-slate-600 focus:ring-indigo-500 focus:border-indigo-500"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-semibold text-slate-700">Duração (dias)</label>
+                            <div className="relative group">
+                                <Clock
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
+                                    size={18}
+                                />
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    value={formData.duration || 0}
+                                    onChange={(e) => handleChange("duration", parseFloat(e.target.value))}
+                                    className="pl-10 focus:ring-indigo-500 focus:border-indigo-500"
+                                    placeholder="0"
                                 />
                             </div>
                         </div>

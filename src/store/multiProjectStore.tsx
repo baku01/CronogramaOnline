@@ -12,6 +12,7 @@ import {
 import { validateNewDependency } from "../utils/validators";
 import { importFromJSON, exportToJSON } from "../utils/dataImportExport";
 import { performResourceLeveling } from "../utils/resourceLeveling";
+import { createDefaultCalendar } from "../utils/calendarCalculations";
 
 interface MultiProjectContextType {
     // Project management
@@ -187,7 +188,7 @@ export const MultiProjectProvider: React.FC<{ children: React.ReactNode }> = ({ 
             tasks: [],
             dependencies: [],
             resources: [],
-            calendars: [],
+            calendars: [createDefaultCalendar()],
             baselines: [],
             scenarios: [],
             customFields: [],
@@ -308,7 +309,7 @@ export const MultiProjectProvider: React.FC<{ children: React.ReactNode }> = ({ 
             tasks: [],
             dependencies: [],
             resources: [],
-            calendars: [],
+            calendars: [createDefaultCalendar()],
             baselines: [],
             scenarios: [],
             customFields: [],
@@ -816,7 +817,22 @@ export const MultiProjectProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const project = getActiveProject();
         if (!project || project.tasks.length === 0) return;
 
-        const workingDays = project.workingDays || DEFAULT_WORKING_DAYS;
+        // Resolve active calendar
+        const defaultCalendar = createDefaultCalendar();
+        let projectCalendar = defaultCalendar;
+
+        if (project.calendars && project.calendars.length > 0) {
+            if (project.defaultCalendarId) {
+                projectCalendar = project.calendars.find(c => c.id === project.defaultCalendarId) || project.calendars[0];
+            } else {
+                projectCalendar = project.calendars[0];
+            }
+        } else if (project.workingDays) {
+            // Backward compatibility
+            projectCalendar = { ...defaultCalendar, workingDays: project.workingDays };
+        }
+
+        const workingDays = projectCalendar;
 
         // Calculate critical path
         const criticalPath = calculateCriticalPath(project.tasks, project.dependencies, workingDays);
