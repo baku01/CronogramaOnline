@@ -15,6 +15,7 @@ import SettingsView from "./components/SettingsView";
 import PertDiagram from "./components/PertDiagram";
 import CalendarView from "./components/CalendarView";
 import ProjectSwitcher from "./components/ProjectSwitcher";
+import TaskBoard from "./components/TaskBoard";
 import type { ExtendedTask } from "./types/types";
 import { DependencyType } from "./types/types";
 
@@ -215,6 +216,14 @@ const AppContent: React.FC = () => {
                                 searchQuery={searchQuery}
                                 onEditTask={handleEditTask}
                             />
+                        </div>
+                    </div>
+                );
+            case "board":
+                return (
+                    <div className="h-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in flex flex-col">
+                        <div className="flex-1 overflow-hidden relative">
+                            <TaskBoard />
                         </div>
                     </div>
                 );
