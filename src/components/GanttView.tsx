@@ -17,6 +17,7 @@ import TaskContextMenu from "./TaskContextMenu";
 interface GanttViewProps {
     viewMode: ViewMode;
     showCriticalPath: boolean;
+    showBaseline?: boolean;
     searchQuery: string;
     onEditTask: (task: ExtendedTask) => void;
 }
@@ -90,7 +91,7 @@ const CustomTooltip: React.FC<{
     );
 };
 
-const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searchQuery, onEditTask }) => {
+const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, showBaseline = false, searchQuery, onEditTask }) => {
     const { getTasks, updateTask, deleteTask, recalculateDates, getResources } = useMultiProject();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -156,13 +157,15 @@ const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searc
         }
 
         // Convert to Gantt Task format
-        const ganttTasks: Task[] = groupedTasks.map((task) => {
+        const ganttTasks: Task[] = [];
+
+        groupedTasks.forEach((task) => {
             const hasConstraint = task.constraintType && task.constraintType !== 'ASAP';
             const wbs = wbsMap.get(task.id) || '';
             const wbsPrefix = wbs ? `${wbs}. ` : '';
-            const isSelected = task.id === selectedTaskId;
 
-            return {
+            // Standard Task
+            ganttTasks.push({
                 start: task.start,
                 end: task.end,
                 name: hasConstraint ? `${wbsPrefix}${task.name} 🔒` : `${wbsPrefix}${task.name}`,
@@ -200,11 +203,38 @@ const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searc
                                     progressSelectedColor: "#1e293b", // slate-800
                                 }
                                 : undefined,
-            };
+            });
+
+            // Baseline Task (Ghost)
+            if (showBaseline && task.baselineStart && task.baselineEnd) {
+                ganttTasks.push({
+                    start: task.baselineStart,
+                    end: task.baselineEnd,
+                    name: "Baseline",
+                    id: `baseline-${task.id}`,
+                    type: "task",
+                    progress: 0,
+                    project: task.id, // Hack: make it a child of the task so it stays close? Or just same project?
+                    // If we make it child, we need to ensure the parent is expanded?
+                    // Better to just insert it after.
+                    // If we assign `project` to `task.project`, it's a sibling.
+                    project: task.project,
+                    dependencies: [],
+                    hideChildren: false,
+                    displayOrder: task.displayOrder, // Same order?
+                    isDisabled: true,
+                    styles: {
+                        backgroundColor: "#cbd5e1", // slate-300
+                        backgroundSelectedColor: "#94a3b8", // slate-400
+                        progressColor: "transparent",
+                        progressSelectedColor: "transparent",
+                    }
+                });
+            }
         });
 
         setTasks(ganttTasks);
-    }, [getTasks, showCriticalPath, searchQuery, filters, grouping, selectedTaskId]);
+    }, [getTasks, showCriticalPath, showBaseline, searchQuery, filters, grouping, selectedTaskId]);
 
     const handleTaskChange = (task: Task) => {
         const duration = differenceInDays(task.end, task.start) + 1;
@@ -335,25 +365,25 @@ const GanttView: React.FC<GanttViewProps> = ({ viewMode, showCriticalPath, searc
                         listCellWidth="300px"
                         columnWidth={getColumnWidth()}
                         locale="pt-BR"
-                        barBackgroundColor="#6366f1"
-                        barBackgroundSelectedColor="#4f46e5"
-                        barProgressColor="#4338ca"
-                        barProgressSelectedColor="#3730a3"
-                        projectBackgroundColor="#64748b"
-                        projectBackgroundSelectedColor="#475569"
-                        projectProgressColor="#334155"
-                        projectProgressSelectedColor="#1e293b"
-                        milestoneBackgroundColor="#10b981"
-                        milestoneBackgroundSelectedColor="#059669"
-                        todayColor="rgba(254, 243, 199, 0.5)"
-                        arrowColor="#94a3b8"
+                        barBackgroundColor="#818cf8"
+                        barBackgroundSelectedColor="#6366f1"
+                        barProgressColor="#4f46e5"
+                        barProgressSelectedColor="#4338ca"
+                        projectBackgroundColor="#94a3b8"
+                        projectBackgroundSelectedColor="#64748b"
+                        projectProgressColor="#475569"
+                        projectProgressSelectedColor="#334155"
+                        milestoneBackgroundColor="#34d399"
+                        milestoneBackgroundSelectedColor="#10b981"
+                        todayColor="rgba(251, 191, 36, 0.1)"
+                        arrowColor="#cbd5e1"
                         arrowIndent={20}
-                        fontSize="12px"
-                        fontFamily="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-                        rowHeight={48}
-                        headerHeight={56}
-                        barCornerRadius={4}
-                        handleWidth={8}
+                        fontSize="13px"
+                        fontFamily="'Outfit', 'Inter', system-ui, sans-serif"
+                        rowHeight={52}
+                        headerHeight={64}
+                        barCornerRadius={6}
+                        handleWidth={10}
                     />
                     {contextMenu && (
                         <TaskContextMenu

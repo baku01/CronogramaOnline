@@ -32,6 +32,8 @@ interface ToolbarProps {
     onViewModeChange: (mode: ViewMode) => void;
     onShowCriticalPath: (show: boolean) => void;
     showCriticalPath: boolean;
+    onShowBaseline: (show: boolean) => void;
+    showBaseline: boolean;
     searchQuery: string;
     onSearchChange: (query: string) => void;
 }
@@ -45,6 +47,8 @@ const Toolbar: React.FC<ToolbarProps> = ({
     onViewModeChange,
     onShowCriticalPath,
     showCriticalPath,
+    onShowBaseline,
+    showBaseline,
     searchQuery,
     onSearchChange,
 }) => {
@@ -216,6 +220,17 @@ const Toolbar: React.FC<ToolbarProps> = ({
                             title={showCriticalPath ? "Ocultar Caminho Crítico" : "Mostrar Caminho Crítico"}
                         >
                             <span className="hidden sm:inline">Caminho Crítico</span>
+                        </Button>
+
+                        <Button
+                            onClick={() => onShowBaseline(!showBaseline)}
+                            variant={showBaseline ? "primary" : "outline"}
+                            size="sm"
+                            className={showBaseline ? "bg-slate-700 text-white hover:bg-slate-800" : ""}
+                            leftIcon={<Target size={16} />}
+                            title={showBaseline ? "Ocultar Linha de Base" : "Mostrar Linha de Base"}
+                        >
+                            <span className="hidden sm:inline">Baseline</span>
                         </Button>
 
                         <div className="relative flex-1 sm:w-48">

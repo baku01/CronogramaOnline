@@ -7,6 +7,7 @@ import StatusBar from "./components/StatusBar";
 import Dashboard from "./components/Dashboard";
 import { MainLayout } from "./components/layout/MainLayout";
 import { downloadProjectAsJSON, downloadTasksAsCSV } from "./utils/dataImportExport";
+import { generateRecurringTasks } from "./utils/recurrence";
 import TaskModal from "./components/TaskModal";
 import AnalyticsView from "./components/AnalyticsView";
 import ResourcesView from "./components/ResourcesView";
@@ -15,6 +16,9 @@ import SettingsView from "./components/SettingsView";
 import PertDiagram from "./components/PertDiagram";
 import CalendarView from "./components/CalendarView";
 import ProjectSwitcher from "./components/ProjectSwitcher";
+import TaskBoard from "./components/TaskBoard";
+import TaskSheetView from "./components/TaskSheetView";
+import TimelineView from "./components/TimelineView";
 import type { ExtendedTask } from "./types/types";
 import { DependencyType } from "./types/types";
 
@@ -63,6 +67,7 @@ const AppContent: React.FC = () => {
     const [activeTab, setActiveTab] = useState("gantt");
     const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
     const [showCriticalPath, setShowCriticalPath] = useState(false);
+    const [showBaseline, setShowBaseline] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<ExtendedTask | undefined>(undefined);
@@ -125,15 +130,29 @@ const AppContent: React.FC = () => {
                 status: taskData.status || "not_started",
                 priority: taskData.priority || "medium",
             } as ExtendedTask;
-            addTask(newTask);
 
-            // Add dependencies for new task
-            dependencies.forEach((dep) => {
-                addDependency({
-                    ...dep,
-                    toTaskId: taskId,
+            if (newTask.isRecurring) {
+                const generatedTasks = generateRecurringTasks(newTask);
+                generatedTasks.forEach(t => addTask(t));
+                // Dependencies logic needs to handle multiple tasks or just the summary.
+                // Assuming dependencies apply to the summary task (first in list).
+                const summaryTaskId = generatedTasks[0].id;
+                dependencies.forEach((dep) => {
+                    addDependency({
+                        ...dep,
+                        toTaskId: summaryTaskId,
+                    });
                 });
-            });
+            } else {
+                addTask(newTask);
+                // Add dependencies for new task
+                dependencies.forEach((dep) => {
+                    addDependency({
+                        ...dep,
+                        toTaskId: taskId,
+                    });
+                });
+            }
         }
         setTimeout(() => recalculateDates(), 100);
     };
@@ -218,6 +237,14 @@ const AppContent: React.FC = () => {
                         </div>
                     </div>
                 );
+            case "board":
+                return (
+                    <div className="h-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in flex flex-col">
+                        <div className="flex-1 overflow-hidden relative">
+                            <TaskBoard />
+                        </div>
+                    </div>
+                );
             case "dashboard":
                 return <Dashboard />;
             case "resources":
@@ -251,6 +278,14 @@ const AppContent: React.FC = () => {
                         </div>
                     </div>
                 );
+            case "timeline":
+                return (
+                    <div className="h-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in flex flex-col">
+                        <div className="flex-1 overflow-hidden relative">
+                            <TimelineView />
+                        </div>
+                    </div>
+                );
             default:
                 return (
                     <div className="flex flex-col items-center justify-center h-full text-slate-500 bg-white rounded-2xl border border-slate-200">
@@ -279,6 +314,8 @@ const AppContent: React.FC = () => {
                         onViewModeChange={setViewMode}
                         onShowCriticalPath={setShowCriticalPath}
                         showCriticalPath={showCriticalPath}
+                        onShowBaseline={setShowBaseline}
+                        showBaseline={showBaseline}
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                     />
